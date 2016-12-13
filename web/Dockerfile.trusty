@@ -15,28 +15,29 @@
 FROM ubuntu:trusty-20161123
 MAINTAINER Netflix Open Source Development <talent@netflix.com>
 
-# Install NodeJS 6 LTS
-ENV NODESOURCE_KEY_PATH /tmp/nodesource.gpg.key
-ADD https://deb.nodesource.com/gpgkey/nodesource.gpg.key $NODESOURCE_KEY_PATH
-
+# Add apt-transport-https and other utilities
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get update -q && \
-    apt-get install -y locales apt-transport-https && \
-    # Verify the NodeJS key
-    echo "773b328f7b1d6db58a8c6a7fc89e2ed58ac5e06c3ab148411cf8272be7b1c472 $NODESOURCE_KEY_PATH" | sha256sum -c && \
-    apt-key add $NODESOURCE_KEY_PATH && \
-    echo 'deb https://deb.nodesource.com/node_6.x trusty main' > /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && \
-    # Install packages
-    apt-get install -y -q --no-install-recommends \
+    apt-get install -y --no-install-recommends \
+    apt-transport-https \
     software-properties-common \
-    # Postgres client dependencies
-    postgresql-9.3 \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up NodeJs download from nodesource with verified key
+COPY nodesource.gpg.key .
+RUN apt-key add nodesource.gpg.key && \
+    echo 'deb https://deb.nodesource.com/node_6.x trusty main' > /etc/apt/sources.list.d/nodesource.list
+
+# Install packages
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update -q && \
+    apt-get install -y --no-install-recommends \
+    # Postgres 9.3 client dependencies
     postgresql-client-9.3 \
     postgresql-contrib-9.3 \
     # Build Tools
-    make \
-    curl \
+    build-essential \
     git \
     # Python depencies
     python-dev \
@@ -45,23 +46,22 @@ RUN DEBIAN_FRONTEND=noninteractive \
     libpq-dev \
     libffi-dev \
     # NodeJS
-    nodejs
+    nodejs && \
+    # cleanup
+    rm -rf /var/lib/apt/lists/*
 
+ENV LEMUR_INSTALL_PATH /usr/local/src/lemur
+#ENV LEMUR_VERSION 0.4.0
+#ENV LEMUR_REPO https://github.com/netflix/lemur.git
+ENV LEMUR_VERSION upgrade-node-to-lts
+ENV LEMUR_REPO https://github.com/wyaeld/lemur.git
 
+RUN mkdir -p $LEMUR_INSTALL_PATH
+WORKDIR $LEMUR_INSTALL_PATH
 
-# ends up with nodejs=v0.10.25 and npm=v
-ENV LEMUR_VERSION 0.4.0
-ENV NODEJS_VERSION 6.2.0
-ENV INSTALL_PATH /usr/local/src/lemur
-ENV LANG en_US.UTF-8
-ENV LC_ALL en_US.UTF-8
-
-RUN mkdir -p $INSTALL_PATH
-WORKDIR $INSTALL_PATH
-
-# Install Lemur
+# Install Lemur from source
 RUN git config --global url."https://".insteadOf git://
-RUN git clone --branch $LEMUR_VERSION https://github.com/netflix/lemur.git .
+RUN git clone --branch $LEMUR_VERSION $LEMUR_REPO .
 RUN pip install --upgrade pip virtualenv &&\
     virtualenv venv &&\
     export PATH=$LEMUR_VERSION/venv/bin:${PATH}
@@ -73,8 +73,8 @@ RUN npm install --unsafe-perm &&\
     node_modules/.bin/gulp package &&\
     rm -r bower_components node_modules
 
-ADD lemur.conf.py /usr/local/src/lemur/lemur.conf.py 
-ADD api-start.sh /usr/local/src/lemur/scripts/api-start.sh
-RUN chmod +x /usr/local/src/lemur/scripts/api-start.sh
+COPY lemur.conf.py .
+COPY api-start.sh scripts/
+RUN chmod +x scripts/api-start.sh
 
 CMD ["/usr/local/src/lemur/scripts/api-start.sh"]
