@@ -1,0 +1,80 @@
+# Copyright 2014 Netflix, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM ubuntu:trusty-20161123
+MAINTAINER Netflix Open Source Development <talent@netflix.com>
+
+# Install NodeJS 6 LTS
+ENV NODESOURCE_KEY_PATH /tmp/nodesource.gpg.key
+ADD https://deb.nodesource.com/gpgkey/nodesource.gpg.key $NODESOURCE_KEY_PATH
+
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get update -q && \
+    apt-get install -y locales apt-transport-https && \
+    # Verify the NodeJS key
+    echo "773b328f7b1d6db58a8c6a7fc89e2ed58ac5e06c3ab148411cf8272be7b1c472 $NODESOURCE_KEY_PATH" | sha256sum -c && \
+    apt-key add $NODESOURCE_KEY_PATH && \
+    echo 'deb https://deb.nodesource.com/node_6.x trusty main' > /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    # Install packages
+    apt-get install -y -q --no-install-recommends \
+    software-properties-common \
+    # Postgres client dependencies
+    postgresql-9.3 \
+    postgresql-client-9.3 \
+    postgresql-contrib-9.3 \
+    # Build Tools
+    make \
+    curl \
+    git \
+    # Python depencies
+    python-dev \
+    python-pip \
+    python-psycopg2 \
+    libpq-dev \
+    libffi-dev \
+    # NodeJS
+    nodejs
+
+
+
+# ends up with nodejs=v0.10.25 and npm=v
+ENV LEMUR_VERSION 0.4.0
+ENV NODEJS_VERSION 6.2.0
+ENV INSTALL_PATH /usr/local/src/lemur
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
+
+RUN mkdir -p $INSTALL_PATH
+WORKDIR $INSTALL_PATH
+
+# Install Lemur
+RUN git config --global url."https://".insteadOf git://
+RUN git clone --branch $LEMUR_VERSION https://github.com/netflix/lemur.git .
+RUN pip install --upgrade pip virtualenv &&\
+    virtualenv venv &&\
+    export PATH=$LEMUR_VERSION/venv/bin:${PATH}
+RUN make develop
+
+# Create static files
+RUN npm install --unsafe-perm &&\
+    node_modules/.bin/gulp build &&\
+    node_modules/.bin/gulp package &&\
+    rm -r bower_components node_modules
+
+ADD lemur.conf.py /usr/local/src/lemur/lemur.conf.py 
+ADD api-start.sh /usr/local/src/lemur/scripts/api-start.sh
+RUN chmod +x /usr/local/src/lemur/scripts/api-start.sh
+
+CMD ["/usr/local/src/lemur/scripts/api-start.sh"]

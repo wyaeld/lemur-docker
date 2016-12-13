@@ -12,27 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu:14.04
+FROM ubuntu:xenial-20161121
 MAINTAINER Netflix Open Source Development <talent@netflix.com>
 
-RUN apt-get update && apt-get install -y curl && curl -sL https://deb.nodesource.com/setup_0.12 | bash - && apt-get -y -q install software-properties-common postgresql-9.3 postgresql-client-9.3 postgresql-contrib-9.3 && apt-get install -y curl python-dev python-pip git sudo && apt-get -y -q install python-psycopg2 libpq-dev libffi-dev nodejs
+RUN apt-get update && apt-get install -y -q --no-install-recommends \
+  software-properties-common \
+  postgresql-9.5 \
+  postgresql-client-9.5 \
+  postgresql-contrib-9.5 \
+  curl \
+  python-dev \
+  python-pip \
+  git \
+  sudo \
+  python-psycopg2 \
+  libpq-dev \
+  libffi-dev \
+  nodejs \
+  npm
 
+ENV LEMUR_VERSION="0.4.0"\
+    INSTALL_PATH="/usr/local/src"
 
 # Install Lemur
-RUN git config --global url."https://".insteadOf git:// &&\
-  cd /usr/local/src &&\
-  git clone https://github.com/netflix/lemur.git &&\
-  cd lemur &&\
-  git fetch &&\
-  pip install --upgrade virtualenv &&\
-  virtualenv venv &&\
-  export PATH=/usr/local/src/lemur/venv/bin:${PATH} &&\
-  pip install --upgrade pip virtualenv &&\
-  git checkout 0.4.0 &&\
-  make develop
+RUN git config --global url."https://".insteadOf git://
+
+WORKDIR $INSTALL_PATH
+RUN git clone https://github.com/netflix/lemur.git
+WORKDIR $INSTALL_PATH/lemur
+RUN git clone --branch $LEMUR_VERSION https://github.com/netflix/lemur.git .
+RUN pip install --upgrade pip virtualenv &&\
+    virtualenv venv &&\
+    export PATH=/usr/local/src/lemur/venv/bin:${PATH}
+RUN make develop
 
 # Create static files
-RUN cd /usr/local/src/lemur && npm install --unsafe-perm && node_modules/.bin/gulp build && node_modules/.bin/gulp package && rm -r bower_components node_modules
+RUN npm install --unsafe-perm && node_modules/.bin/gulp build && node_modules/.bin/gulp package && rm -r bower_components node_modules
 
 ADD lemur.conf.py /usr/local/src/lemur/lemur.conf.py 
 ADD api-start.sh /usr/local/src/lemur/scripts/api-start.sh
